@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Web Stream Deck PRO for OBS</title>
+<style>
+:root{
+  --bg:#0b0f14; --panel:#0f1724; --text:#e6edf3; --sub:#9fb1c5;
+  --accent:#60a5fa; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  --btn:#0e1622; --grid:#0c1320; --border:#1d2a3a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent)}
+header{padding:14px 16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#0e1622,#0c1420)}
+h1{margin:0;font-size:20px}
+.wrap{max-width:1200px;margin:0 auto;padding:16px;display:grid;gap:16px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+.row{display:grid;gap:16px}
+@media (min-width:1100px){.row{grid-template-columns: 380px 1fr}}
+.input{background:#0c1320;border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px;width:100%}
+.btn{background:var(--btn);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px;cursor:pointer}
+.btn:hover{border-color:#2b4161}
+.small{color:var(--sub);font-size:12px}
+.status{display:flex;gap:8px;align-items:center}
+.dot{width:10px;height:10px;border-radius:50%;background:#334155;border:1px solid #1e293b}
+.dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
+.badge{display:inline-flex;align-items:center;gap:6px;background:#0c1320;border:1px solid #22334c;border-radius:999px;padding:6px 10px}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.controls{display:flex;flex-wrap:wrap;gap:8px}
+fieldset{border:1px solid var(--border);border-radius:12px;padding:12px}
+legend{color:var(--sub)}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;background:var(--grid);padding:12px;border-radius:12px;border:1px dashed #1b2a42;min-height:200px}
+.tile{position:relative;display:flex;align-items:center;justify-content:center;text-align:center;min-height:90px;border-radius:12px;border:1px solid #22334c;background:#0d1522;cursor:pointer;padding:10px;user-select:none;outline:none}
+.tile.drag{opacity:.5}
+.tile .title{font-weight:700}
+.tile .sub{font-weight:400;color:var(--sub);font-size:11px}
+.tile .resize{position:absolute;right:6px;bottom:6px;font-size:10px;color:#92a4bb;opacity:.7}
+.tile[data-w="2"]{grid-column:span 2} .tile[data-w="3"]{grid-column:span 3}
+.tile[data-h="2"]{min-height:190px} .tile[data-h="3"]{min-height:290px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.toggle{display:inline-flex;align-items:center;gap:6px}
+.toggle input{accent-color:#3b82f6}
+hr{border:0;border-top:1px solid var(--border);margin:8px 0}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px}
+.modal .box{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;max-width:560px;width:100%;display:grid;gap:10px}
+label.l{display:grid;gap:6px}
+code.inline{background:#0c1320;border:1px solid var(--border);padding:2px 6px;border-radius:6px}
+footer{padding:16px;text-align:center;color:var(--sub)}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding:0 16px;">
+    <h1>Web Stream Deck PRO for OBS</h1>
+    <div class="small">Deck web com arrastar/soltar, macros, atalhos e PWA. obs-websocket v5 required.</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="row">
+    <section class="card" style="padding:12px;display:grid;gap:12px">
+      <div class="toolbar">
+        <div class="status">
+          <div id="dot" class="dot"></div>
+          <div id="state">Desconectado</div>
+        </div>
+        <label class="toggle small"><input type="checkbox" id="remember"> Lembrar senha</label>
+        <label class="toggle small"><input type="checkbox" id="demo"> Modo Demo</label>
+      </div>
+      <div class="kv">
+        <label class="l">URL do OBS WebSocket
+          <input id="url" class="input" value="ws://127.0.0.1:4455">
+        </label>
+        <label class="l">Senha (OBS → Tools → WebSocket)
+          <input id="pwd" class="input" type="password" placeholder="sua senha">
+        </label>
+      </div>
+      <div class="controls">
+        <button id="btnConnect" class="btn">Conectar</button>
+        <button id="btnDisconnect" class="btn">Desconectar</button>
+        <span class="badge">RPC <span id="rpc">—</span></span>
+        <span class="badge">OBS WS <span id="ver">—</span></span>
+        <span class="badge" id="flags">—</span>
+      </div>
+      <fieldset>
+        <legend>OBS</legend>
+        <div class="kv">
+          <label class="l">Cenas
+            <select id="scenes" class="input"></select>
+          </label>
+          <label class="l">Inputs
+            <select id="inputs" class="input"></select>
+          </label>
+        </div>
+        <div class="controls" style="margin-top:8px">
+          <button class="btn" id="btnScene">Ir para cena</button>
+          <button class="btn" id="btnMute">Alternar mute</button>
+          <button class="btn" id="btnReplay">Salvar Replay</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Perfis</legend>
+        <div class="controls">
+          <select id="profiles" class="input" style="max-width:240px"></select>
+          <button class="btn" id="btnProfileNew">Novo</button>
+          <button class="btn" id="btnProfileRename">Renomear</button>
+          <button class="btn" id="btnProfileDelete">Excluir</button>
+          <button class="btn" id="btnExport">Exportar</button>
+          <label class="btn" for="fileImport" style="cursor:pointer">Importar</label>
+          <input type="file" id="fileImport" accept="application/json" style="display:none">
+          <button class="btn" id="btnShare">Compartilhar Link</button>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="card" style="padding:12px;display:grid;gap:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-weight:700">Painel</div>
+        <div class="controls">
+          <button class="btn" id="btnEdit">Editar</button>
+          <button class="btn" id="btnAdd">+ Novo</button>
+          <span class="small">Dica: pressione <code class="inline">E</code> para modo edição e arraste para reordenar.</span>
+        </div>
+      </div>
+      <div id="grid" class="grid"></div>
+    </section>
+  </div>
+</div>
+
+<div id="modal" class="modal" role="dialog" aria-modal="true">
+  <div class="box">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <strong id="modalTitle">Botão</strong>
+      <button class="btn" id="mClose">Fechar</button>
+    </div>
+    <div class="kv">
+      <label class="l">Rótulo
+        <input id="mLabel" class="input" placeholder="Ex.: Cena Jogo">
+      </label>
+      <label class="l">Cor (hex)
+        <input id="mColor" class="input" value="#143a61">
+      </label>
+    </div>
+    <div class="kv">
+      <label class="l">Largura (colunas 1–3)
+        <input id="mW" class="input" type="number" min="1" max="3" value="1">
+      </label>
+      <label class="l">Altura (linhas 1–3)
+        <input id="mH" class="input" type="number" min="1" max="3" value="1">
+      </label>
+    </div>
+    <label class="l">Atalho de teclado (opcional, ex.: F1, KeyQ, Digit1)
+      <input id="mKey" class="input" placeholder="Tecla do KeyboardEvent.code">
+    </label>
+    <label class="l">Ação
+      <select id="mType" class="input">
+        <option value="scene">Trocar cena</option>
+        <option value="toggleMute">Alternar mute</option>
+        <option value="toggleSource">Mostrar/Ocultar item de cena</option>
+        <option value="startStopStream">Iniciar/Parar stream</option>
+        <option value="startStopRec">Iniciar/Parar gravação</option>
+        <option value="saveReplay">Salvar Replay Buffer</option>
+        <option value="startStopVCam">Iniciar/Parar câmera virtual</option>
+        <option value="custom">Custom request</option>
+        <option value="macro">Macro (sequência)</option>
+      </select>
+    </label>
+    <div id="mParams" class="kv"></div>
+    <div class="controls">
+      <button class="btn" id="mSave">Salvar</button>
+      <button class="btn" id="mDelete">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<footer>MIT License • Web Stream Deck PRO</footer>
+
+<script>
+if ('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
+
+// ===== Utils =====
+const $ = sel => document.querySelector(sel);
+const enc = new TextEncoder();
+const sleep = ms => new Promise(r=>setTimeout(r, ms));
+function b64(bytes){ return btoa(String.fromCharCode(...bytes)); }
+function b64urlEncode(str){ return btoa(unescape(encodeURIComponent(str))).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,''); }
+function b64urlDecodeToStr(s){ s=s.replaceAll('-','+').replaceAll('_','/'); while(s.length%4) s+='='; return decodeURIComponent(escape(atob(s))); }
+async function sha256(str){ const hash = await crypto.subtle.digest('SHA-256', enc.encode(str)); return new Uint8Array(hash); }
+function uuid(){ return (crypto.randomUUID && crypto.randomUUID()) || Math.random().toString(36).slice(2); }
+function vibrate(ms=30){ if (navigator.vibrate) navigator.vibrate(ms); }
+
+// ===== Connection / Protocol v5 =====
+let ws = null;
+let server = { rpcVersion: null, wsVersion: null };
+let ready = false;
+const pending = new Map();
+let demo = false;
+
+async function connect(url, password){
+  disconnect();
+  setState('Conectando...');
+  if (demo){
+    // Fake handshake
+    await sleep(300);
+    server.rpcVersion = 1; server.wsVersion = '5.x';
+    ver.textContent = server.wsVersion; rpc.textContent = server.rpcVersion;
+    setState('Demo conectado'); dot.classList.add('ok'); ready = true;
+    await refreshObsData();
+    return;
+  }
+  ws = new WebSocket(url);
+  ws.onopen = () => setState('Conectado, aguardando Hello...');
+  ws.onclose = () => { setState('Desconectado'); ready=false; dot.classList.remove('ok'); };
+  ws.onerror = () => { setState('Erro de conexão'); dot.classList.add('bad'); };
+  ws.onmessage = async (ev) => {
+    const msg = JSON.parse(ev.data);
+    switch(msg.op){
+      case 0: // Hello
+        server.rpcVersion = msg.d.rpcVersion;
+        server.wsVersion = msg.d.obsWebSocketVersion || '5.x';
+        ver.textContent = server.wsVersion;
+        rpc.textContent = server.rpcVersion;
+        if (msg.d.authentication){
+          const secret = b64(await sha256(password + msg.d.authentication.salt));
+          const auth = b64(await sha256(secret + msg.d.authentication.challenge));
+          send({ op: 1, d: { rpcVersion: server.rpcVersion, authentication: auth } });
+        } else {
+          send({ op: 1, d: { rpcVersion: server.rpcVersion } });
+        }
+        break;
+      case 2: // Identified
+        ready = true;
+        dot.classList.add('ok');
+        setState('Identificado');
+        await refreshObsData();
+        break;
+      case 7: // RequestResponse
+        const id = msg.d.requestId;
+        if (pending.has(id)){
+          const {resolve, reject} = pending.get(id);
+          pending.delete(id);
+          if (msg.d.requestStatus && msg.d.requestStatus.result){
+            resolve(msg.d.responseData || {});
+          } else {
+            reject(msg.d.requestStatus);
+          }
+        }
+        break;
+      case 5: // Event
+        handleEvent(msg.d || {});
+        break;
+    }
+  };
+}
+
+function disconnect(){
+  if (ws){ try{ ws.close(); }catch{} }
+  ws = null; ready=false; pending.clear();
+  dot.classList.remove('ok'); setState('Desconectado');
+}
+
+function send(obj){
+  if (demo) return; // ignore
+  if (ws && ws.readyState === WebSocket.OPEN){
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function call(requestType, requestData={}){
+  if (demo) return demoCall(requestType, requestData);
+  return new Promise((resolve, reject)=>{
+    const requestId = uuid();
+    pending.set(requestId, {resolve, reject});
+    send({ op: 6, d: { requestType, requestId, requestData } });
+    setTimeout(()=>{
+      if (pending.has(requestId)){ pending.delete(requestId); reject({ code:'timeout' }); }
+    }, 8000);
+  });
+}
+
+// Demo responses
+let demoState = { scene: 'Intro', streaming:false, recording:false, vcam:false, inputs:[{inputName:'Mic/Aux'},{inputName:'Desktop Audio'}], scenes:['Intro','Jogo','BRB'], muted:{'Mic/Aux':false} };
+async function demoCall(type, data){
+  await sleep(120);
+  switch(type){
+    case 'GetSceneList': return { scenes: demoState.scenes.map(x=>({sceneName:x})) };
+    case 'GetInputList': return { inputs: demoState.inputs };
+    case 'SetCurrentProgramScene': demoState.scene=data.sceneName; return {};
+    case 'GetInputMute': return { inputMuted: !!demoState.muted[data.inputName] };
+    case 'SetInputMute': demoState.muted[data.inputName] = !!data.mute; return {};
+    case 'GetSceneItemList': return { sceneItems: [{sceneItemId:1, sourceName:'Facecam', sceneItemEnabled:true}] };
+    case 'SetSceneItemEnabled': return {};
+    case 'GetStreamStatus': return { outputActive: demoState.streaming };
+    case 'StartStream': demoState.streaming=true; return {};
+    case 'StopStream': demoState.streaming=false; return {};
+    case 'GetRecordStatus': return { outputActive: demoState.recording };
+    case 'StartRecording': demoState.recording=true; return {};
+    case 'StopRecording': demoState.recording=false; return {};
+    case 'GetVirtualCamStatus': return { outputActive: demoState.vcam };
+    case 'StartVirtualCam': demoState.vcam=true; return {};
+    case 'StopVirtualCam': demoState.vcam=false; return {};
+    case 'SaveReplayBuffer': return {};
+    default: return {};
+  }
+}
+
+function handleEvent(ev){
+  // Exemplos: CurrentProgramSceneChanged, StreamStateChanged, etc.
+  // Pode-se atualizar badges/flags aqui se desejar.
+}
+
+// ===== OBS helpers =====
+async function refreshObsData(){
+  try{
+    const scenesResp = await call('GetSceneList');
+    const list = scenesResp.scenes || [];
+    scenes.innerHTML = '';
+    list.forEach(s=>{ const o = document.createElement('option'); o.value = s.sceneName; o.textContent = s.sceneName; scenes.appendChild(o); });
+    const inputsResp = await call('GetInputList', {});
+    inputs.innerHTML = '';
+    (inputsResp.inputs || []).forEach(i=>{ const o = document.createElement('option'); o.value = i.inputName; o.textContent = i.inputName; inputs.appendChild(o); });
+    updateFlags();
+  }catch(e){
+    console.warn('Não foi possível listar cenas/inputs', e);
+  }
+}
+
+async function setScene(name){ return call('SetCurrentProgramScene', { sceneName: name }); }
+async function toggleMute(inputName){
+  try{
+    const cur = await call('GetInputMute', { inputName });
+    return call('SetInputMute', { inputName, mute: !cur.inputMuted });
+  }catch(e){ return call('SetInputMute', { inputName, mute: true }).catch(()=>{}); }
+}
+async function toggleSource(sceneName, sourceName){
+  const list = await call('GetSceneItemList', { sceneName });
+  const item = (list.sceneItems || []).find(x => x.sourceName === sourceName);
+  if (!item) throw new Error('Item não encontrado');
+  const enabledNow = item.sceneItemEnabled === true;
+  return call('SetSceneItemEnabled', { sceneName, sceneItemId: item.sceneItemId, sceneItemEnabled: !enabledNow });
+}
+async function startStopStream(){ try{ const s = await call('GetStreamStatus'); return call(s.outputActive ? 'StopStream' : 'StartStream'); }catch{ return call('StartStream'); } }
+async function startStopRec(){ try{ const s = await call('GetRecordStatus'); return call(s.outputActive ? 'StopRecording' : 'StartRecording'); }catch{ return call('StartRecording'); } }
+async function saveReplay(){ return call('SaveReplayBuffer'); }
+async function startStopVCam(){ try{ const s = await call('GetVirtualCamStatus'); return call(s.outputActive ? 'StopVirtualCam' : 'StartVirtualCam'); }catch{ return call('StartVirtualCam'); } }
+
+// ===== UI: connection =====
+const dot = $('#dot'), stateEl = $('#state'), rpc = $('#rpc'), ver = $('#ver'), flagsEl = $('#flags');
+const urlEl = $('#url'), pwdEl = $('#pwd'), rememberEl = $('#remember'), demoEl = $('#demo');
+const scenes = $('#scenes'), inputs = $('#inputs');
+const btnConnect = $('#btnConnect'), btnDisconnect = $('#btnDisconnect');
+const btnScene = $('#btnScene'), btnMute = $('#btnMute'), btnReplay = $('#btnReplay');
+function setState(t){ stateEl.textContent = t; }
+rememberEl.onchange = ()=> localStorage.setItem('wsd-remember', rememberEl.checked ? '1':'0');
+demoEl.onchange = ()=> { demo = demoEl.checked; };
+if (localStorage.getItem('wsd-remember')==='1'){ rememberEl.checked = true; }
+if (rememberEl.checked){ const saved = localStorage.getItem('wsd-pass'); if (saved) pwdEl.value = atob(saved); }
+const savedUrl = localStorage.getItem('wsd-url'); if (savedUrl) urlEl.value = savedUrl;
+
+btnConnect.onclick = ()=> { localStorage.setItem('wsd-url', urlEl.value.trim()); if (rememberEl.checked) localStorage.setItem('wsd-pass', btoa(pwdEl.value)); connect(urlEl.value.trim(), pwdEl.value); };
+btnDisconnect.onclick = ()=> disconnect();
+btnScene.onclick = ()=> { if (!ready) return; setScene(scenes.value); };
+btnMute.onclick = ()=> { if (!ready) return; toggleMute(inputs.value); };
+btnReplay.onclick = ()=> { if (!ready) return; saveReplay(); };
+
+function updateFlags(){
+  // Pode-se consultar status de stream/rec/vcam para exibir ícones/flags
+  flagsEl.textContent = 'Status atualizado';
+}
+
+// ===== Deck / Profiles =====
+const grid = $('#grid');
+const btnEdit = $('#btnEdit'), btnAdd = $('#btnAdd');
+const profilesEl = $('#profiles');
+const btnProfileNew = $('#btnProfileNew'), btnProfileRename = $('#btnProfileRename'), btnProfileDelete = $('#btnProfileDelete');
+const btnExport = $('#btnExport'), fileImport = $('#fileImport'), btnShare = $('#btnShare');
+
+let editMode = false;
+let profiles = JSON.parse(localStorage.getItem('wsd-profiles') || '{"Default":[]}');
+let activeProfile = localStorage.getItem('wsd-active') || Object.keys(profiles)[0] || 'Default';
+
+function ensureActive(){
+  if (!profiles[activeProfile]) profiles[activeProfile]=[];
+}
+function saveProfiles(){
+  localStorage.setItem('wsd-profiles', JSON.stringify(profiles));
+  localStorage.setItem('wsd-active', activeProfile);
+}
+function refreshProfilesUI(){
+  profilesEl.innerHTML='';
+  Object.keys(profiles).forEach(name=>{
+    const o = document.createElement('option'); o.value = name; o.textContent = name; profilesEl.appendChild(o);
+  });
+  profilesEl.value = activeProfile;
+}
+refreshProfilesUI();
+
+btnProfileNew.onclick = ()=>{
+  const name = prompt('Nome do novo perfil:', 'Perfil '+(Object.keys(profiles).length+1));
+  if (!name) return;
+  profiles[name]=[]; activeProfile=name; saveProfiles(); refreshProfilesUI(); render();
+};
+btnProfileRename.onclick = ()=>{
+  const name = prompt('Novo nome do perfil:', activeProfile);
+  if (!name || name===activeProfile) return;
+  profiles[name]=profiles[activeProfile]; delete profiles[activeProfile]; activeProfile=name; saveProfiles(); refreshProfilesUI(); render();
+};
+btnProfileDelete.onclick = ()=>{
+  if (!confirm('Excluir perfil atual?')) return;
+  delete profiles[activeProfile];
+  activeProfile = Object.keys(profiles)[0] || 'Default';
+  if (!profiles[activeProfile]) profiles[activeProfile]=[];
+  saveProfiles(); refreshProfilesUI(); render();
+};
+profilesEl.onchange = ()=>{ activeProfile = profilesEl.value; saveProfiles(); render(); };
+
+btnExport.onclick = ()=>{
+  const data = JSON.stringify({ profile: activeProfile, layout: profiles[activeProfile] }, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'streamdeck-profile.json'; a.click();
+};
+fileImport.onchange = (e)=>{
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try{
+    const j = JSON.parse(r.result);
+    if (j.profile && Array.isArray(j.layout)){ profiles[j.profile]=j.layout; activeProfile=j.profile; saveProfiles(); refreshProfilesUI(); render(); }
+    else if (Array.isArray(j)){ profiles[activeProfile]=j; saveProfiles(); render(); }
+    else alert('JSON inválido');
+  } catch(err){ alert('JSON inválido'); } };
+  r.readAsText(f);
+};
+btnShare.onclick = ()=>{
+  const data = JSON.stringify({ profile: activeProfile, layout: profiles[activeProfile] });
+  const s = b64urlEncode(data);
+  const url = location.origin + location.pathname + '?s=' + s;
+  navigator.clipboard.writeText(url).then(()=> alert('Link copiado.')).catch(()=> prompt('Copie o link:', url));
+};
+
+// Import via URL ?s=
+(function(){
+  const p = new URLSearchParams(location.search);
+  const s = p.get('s');
+  if (s){
+    try{
+      const j = JSON.parse(b64urlDecodeToStr(s));
+      if (j.profile && Array.isArray(j.layout)){ profiles[j.profile]=j.layout; activeProfile=j.profile; saveProfiles(); refreshProfilesUI(); render(); }
+    }catch{}
+  }
+})();
+
+// ===== Modal Editor =====
+const modal = $('#modal'), mClose = $('#mClose'), mSave = $('#mSave'), mDelete = $('#mDelete');
+const mLabel = $('#mLabel'), mColor = $('#mColor'), mType = $('#mType'), mParams = $('#mParams'), mW=$('#mW'), mH=$('#mH'), mKey=$('#mKey');
+let currentIndex = -1;
+
+function openEdit(index){
+  currentIndex = index;
+  const arr = profiles[activeProfile]; const data = index>=0 ? arr[index] : { label:'Novo', color:'#143a61', type:'scene', w:1, h:1 };
+  mLabel.value = data.label || ''; mColor.value = data.color || '#143a61'; mType.value = data.type || 'scene';
+  mW.value = data.w || 1; mH.value = data.h || 1; mKey.value = data.key || '';
+  buildParamsUI(data);
+  modal.style.display='flex';
+}
+mClose.onclick = ()=> modal.style.display='none';
+mType.onchange = ()=> buildParamsUI({ type: mType.value });
+
+function addParam(name, placeholder, key, val=''){
+  const wrap = document.createElement('label'); wrap.className='l'; wrap.textContent = name;
+  const inp = document.createElement('input'); inp.className='input'; inp.placeholder = placeholder; inp.value = val;
+  inp.oninput = ()=> { const data = JSON.parse(mParams.dataset.current||'{}'); data[key]=inp.value; mParams.dataset.current = JSON.stringify(data); };
+  wrap.appendChild(inp); mParams.appendChild(wrap);
+}
+function buildParamsUI(data){
+  mParams.innerHTML=''; const t = data.type || 'scene';
+  mParams.dataset.current = JSON.stringify(data);
+  if (t==='scene'){ addParam('Cena (sceneName)','Ex.: Jogo','sceneName', data.sceneName||''); }
+  else if (t==='toggleMute'){ addParam('Input (inputName)','Ex.: Mic/Aux','inputName', data.inputName||''); }
+  else if (t==='toggleSource'){ addParam('Cena (sceneName)','Ex.: Jogo','sceneName', data.sceneName||''); addParam('Fonte (sourceName)','Ex.: Facecam','sourceName', data.sourceName||''); }
+  else if (t==='custom'){ addParam('requestType','Ex.: SetCurrentProgramScene','requestType', data.requestType||''); addParam('requestData (JSON)','{"sceneName":"Jogo"}','requestData', data.requestData||''); }
+  else if (t==='macro'){
+    // macro editor simples: JSON com array de passos
+    const wrap = document.createElement('label'); wrap.className='l'; wrap.textContent = 'Passos (JSON de array de requests)';
+    const area = document.createElement('textarea'); area.className='input'; area.style.minHeight='160px';
+    area.placeholder='[{"requestType":"SetCurrentProgramScene","requestData":{"sceneName":"Jogo"}},{"requestType":"SetInputMute","requestData":{"inputName":"Mic/Aux","mute":true}}]';
+    area.value = data.steps ? JSON.stringify(data.steps, null, 2) : '';
+    area.oninput = ()=> {
+      try{ const steps = JSON.parse(area.value || '[]'); const d = JSON.parse(mParams.dataset.current||'{}'); d.steps = steps; mParams.dataset.current = JSON.stringify(d); area.style.borderColor='var(--border)'; }
+      catch{ area.style.borderColor='var(--bad)'; }
+    };
+    wrap.appendChild(area); mParams.appendChild(wrap);
+  }
+}
+
+mSave.onclick = ()=>{
+  const base = { label: mLabel.value || 'Botão', color: mColor.value || '#143a61', type: mType.value, w: +mW.value||1, h:+mH.value||1, key: mKey.value||'' };
+  const params = JSON.parse(mParams.dataset.current || '{}');
+  const merged = Object.assign({}, params, base);
+  const arr = profiles[activeProfile];
+  if (currentIndex>=0) arr[currentIndex] = merged; else arr.push(merged);
+  saveProfiles(); modal.style.display='none'; render();
+};
+mDelete.onclick = ()=>{ const arr = profiles[activeProfile]; if (currentIndex>=0){ arr.splice(currentIndex,1); saveProfiles(); render(); } modal.style.display='none'; };
+
+// ===== Render / Drag =====
+function render(){
+  ensureActive();
+  grid.innerHTML='';
+  profiles[activeProfile].forEach((b,i)=>{
+    const el = document.createElement('button');
+    el.className='tile'; el.draggable = editMode; el.style.background = b.color || '#0d1522';
+    el.dataset.w = b.w || 1; el.dataset.h = b.h || 1;
+    el.innerHTML = `<div><div class="title">${b.label||'Sem título'}</div><div class="sub">${labelAction(b)}</div><div class="resize">${(b.w||1)}x${(b.h||1)}</div></div>`;
+    el.onclick = ()=>{ if (editMode){ openEdit(i);} else { runAction(b).catch(e=>alert('Falha: '+ (e.message||e.code||e))); vibrate(); } };
+    el.oncontextmenu = (e)=>{ e.preventDefault(); openEdit(i); };
+    // drag
+    el.addEventListener('dragstart', ev=>{ el.classList.add('drag'); ev.dataTransfer.setData('text/plain', i); });
+    el.addEventListener('dragend', ()=> el.classList.remove('drag'));
+    el.addEventListener('dragover', ev=> ev.preventDefault());
+    el.addEventListener('drop', ev=>{
+      ev.preventDefault();
+      const from = +ev.dataTransfer.getData('text/plain'); const to = i;
+      const arr = profiles[activeProfile];
+      const [item] = arr.splice(from,1); arr.splice(to,0,item);
+      saveProfiles(); render();
+    });
+    grid.appendChild(el);
+  });
+}
+function labelAction(b){
+  switch(b.type){
+    case 'scene': return 'Cena: ' + (b.sceneName||'');
+    case 'toggleMute': return 'Mute: ' + (b.inputName||'');
+    case 'toggleSource': return 'Fonte: ' + (b.sourceName||'') + ' @ ' + (b.sceneName||'');
+    case 'startStopStream': return 'Stream';
+    case 'startStopRec': return 'Gravação';
+    case 'saveReplay': return 'Replay';
+    case 'startStopVCam': return 'Câmera virtual';
+    case 'custom': return 'Custom: ' + (b.requestType||'');
+    case 'macro': return 'Macro';
+    default: return '—';
+  }
+}
+async function runAction(b){
+  if (!ready && !demo) throw new Error('Não conectado');
+  switch(b.type){
+    case 'scene': return setScene(b.sceneName);
+    case 'toggleMute': return toggleMute(b.inputName);
+    case 'toggleSource': return toggleSource(b.sceneName, b.sourceName);
+    case 'startStopStream': return startStopStream();
+    case 'startStopRec': return startStopRec();
+    case 'saveReplay': return saveReplay();
+    case 'startStopVCam': return startStopVCam();
+    case 'custom': return call(b.requestType, JSON.parse(b.requestData||'{}'));
+    case 'macro': return runMacro(b.steps||[]);
+  }
+}
+async function runMacro(steps){
+  for (const s of steps){
+    await call(s.requestType, s.requestData||{}).catch(()=>{});
+    await sleep(120);
+  }
+}
+btnEdit.onclick = ()=>{ editMode = !editMode; btnEdit.textContent = editMode ? 'Sair do modo edição' : 'Editar'; render(); };
+btnAdd.onclick = ()=> openEdit(-1);
+
+// Keyboard shortcuts
+window.addEventListener('keydown', (e)=>{
+  if (e.code === 'KeyE'){ editMode = !editMode; btnEdit.textContent = editMode ? 'Sair do modo edição' : 'Editar'; render(); }
+  const arr = profiles[activeProfile];
+  const i = arr.findIndex(b => (b.key||'').toLowerCase() === e.code.toLowerCase());
+  if (i>=0){ runAction(arr[i]).catch(()=>{}); vibrate(); }
+});
+
+// First render with defaults
+if (!Object.keys(profiles).length){ profiles = { 'Default': [] }; activeProfile='Default'; saveProfiles(); }
+if (!profiles[activeProfile].length){
+  profiles[activeProfile] = [
+    { label:'Cena Intro', color:'#143a61', type:'scene', sceneName:'Intro', w:1, h:1 },
+    { label:'Cena Jogo', color:'#1a3c2a', type:'scene', sceneName:'Jogo', w:1, h:1 },
+    { label:'Mute Mic', color:'#4a2a2a', type:'toggleMute', inputName:'Mic/Aux', w:1, h:1 },
+    { label:'Stream', color:'#3a2a4a', type:'startStopStream', w:1, h:1 },
+    { label:'Gravar', color:'#3a2a1a', type:'startStopRec', w:1, h:1 },
+    { label:'Replay', color:'#2a3a4a', type:'saveReplay', w:1, h:1 },
+    { label:'Cena BRB', color:'#21405c', type:'scene', sceneName:'BRB', w:2, h:1 }
+  ];
+  saveProfiles();
+}
+render();
+</script>
+</body>
+</html>
